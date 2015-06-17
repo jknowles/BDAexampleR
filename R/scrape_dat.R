@@ -31,6 +31,10 @@ A <- read.table(file("data/dilution/assays.txt"), header=FALSE, comment.char="#"
 A <- read.table(file("data/golf/putting.txt"), header=TRUE, comment.char="#")
 A <- read.table(file("data/light/speedmeas.txt"), header=FALSE, comment.char="#")
 
+A <- read.table(file("data/ARM_Data/arsenic/wells.dat"), header=TRUE, comment.char="#")
+library(foreign)
+A <- read.dta("data/ARM_Data/nes/nes5200_processed_voters_realideo.dta")
+
 
 
 A <- read.table(file("data/house/1896.txt"), header=TRUE, comment.char="#")

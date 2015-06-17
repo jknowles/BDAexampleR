@@ -1,0 +1,219 @@
+---
+title: "ARM Models"
+author: "Jared E. Knowles"
+date: "June 17, 2015"
+output: html_document
+---
+
+# Introduction
+
+In this document I am attempting to work through all the models found on the 
+STAN examples page for the Applied Regression Models book (ARM) by Gelman 
+and Hill (2006). I will do it in the order of the models being sorted by type. 
+
+https://github.com/stan-dev/example-models/wiki/ARM-Models-Sorted-by-Type#multiple-group-level-factors-1
+
+# Single-Level Models
+
+## Lightspeed
+
+```{r}
+library(rstan); library(ggmcmc)
+lightData <- readLines(file("data/ARM_Data/lightspeed/lightspeed.dat"))[5:11]
+lightData <- unlist(lapply(strsplit(lightData, split = " "), as.numeric))
+
+# Simple model
+m1 <- lm(lightData ~ 1)
+
+
+lightMod <- "data {
+  int<lower=0> N; 
+  vector[N] y;
+}
+parameters {
+  vector[1] beta;
+  real<lower=0> sigma;
+} 
+model {
+  y ~ normal(beta[1],sigma);
+}"
+
+
+lightModDat <- list(y = lightData, N = length(lightData))
+
+{sink("NUL"); 
+  stanFit <- stan(model_code = lightMod, data = lightModDat, iter = 100, 
+     chains = 2)
+sink()}
+
+
+
+```
+
+```{r graphicfit}
+library(broom)
+ggs_caterpillar(ggs(stanFit)) + theme_bw() + 
+  geom_point(data = tidy(m1), aes(y = "beta[1]", x = estimate), 
+             color = I("red"), size = 6) + 
+  annotate(geom = "point", y = "sigma", x=arm:::sigma.hat(m1), size = 6, 
+           color = I("red"))
+```
+
+
+
+```{r stancodeex, engine='stan', engine.opts=list(x="ex1")}
+data {
+  int<lower=0> N; 
+  vector[N] y;
+}
+parameters {
+  vector[1] beta;
+  real<lower=0> sigma;
+} 
+model {
+  y ~ normal(beta[1],sigma);
+}
+
+```
+
+
+```{r stanknitr}
+print(ex1)
+
+{sink("NUL"); 
+  fit2 <- sampling(ex1, data = lightModDat, iter = 100, chains = 2)
+sink()}
+
+print(fit2)
+```
+
+## One Predictor
+
+
+```{r, eval=FALSE}
+library(foreign)
+earnData <- read.dta("data/ARM_Data/earnings/heights.dta")
+earnData <- na.omit(earnData)
+earnData <- earnData[earnData$earn > 0,]
+earn1 <- lm(earn ~ height, data = earnData)
+earnLog <- lm(log(earn) ~ height, data = earnData)
+earnLogT <- lm(log10(earn) ~ height, data = earnData)
+
+
+# sub1 <- dat[dat$nstuM >= 3 & dat$nstuF >=3, c("math12", "gender", "SCH_ID")]
+# sub1 <- na.omit(sub1)
+# sub1$schJ <- as.numeric(as.factor(sub1$SCH_ID))
+# sub1$gender <- ifelse(sub1$gender == "female", 1, 0)
+# 
+# schools_dat <- list(J = length(unique(sub1$schJ)), N = nrow(sub1),
+#                     y = sub1$math12,
+#                     gender = sub1$gender,
+#                     schl = sub1$schJ)
+# 
+# fit <- stan(model_code = schools_code, data = schools_dat, 
+#             iter = 100, chains = 2, 
+#             pars = c("a1", "a2", "b", "sigma_a1", "sigma_a2"))
+
+
+```
+
+```{r stanearn1, engine='stan', engine.opts=list(x="ex2")}
+data {
+  int<lower=0> N;
+  vector[N] earn;
+  vector[N] height;
+}
+parameters {
+  vector[2] beta;
+  real<lower=0> sigma;
+}
+model {
+  earn ~ normal(beta[1] + beta[2] * height, sigma);
+}
+```
+
+```{r stanearn2, engine='stan', engine.opts=list(x="ex3")}
+data {
+  int<lower=0> N;
+  vector[N] earn;
+  vector[N] height;
+}
+transformed data {           // log transformation
+  vector[N] log_earn;        
+  log_earn <- log(earn);
+}
+parameters {
+  vector[2] beta;
+  real<lower=0> sigma;
+}
+model {
+  log_earn ~ normal(beta[1] + beta[2] * height, sigma);
+}
+```
+
+
+```{r stanearn2, engine='stan', engine.opts=list(x="ex3")}
+data {
+  int<lower=0> N;
+  vector[N] earn;
+  vector[N] height;
+}
+transformed data {           
+  vector[N] log10_earn;        
+  for(i in 1:N){
+    log10_earn[i] <- log10(earn[i]);
+  }
+}
+parameters {
+  vector[2] beta;
+  real<lower=0> sigma;
+}
+model {
+  log10_earn ~ normal(beta[1] + beta[2] * height, sigma);
+}
+```
+
+```{r stanknitr}
+print(ex2)
+earnModDat <- list(earn = earnData$earn, 
+                   height = earnData$height, 
+                   N = nrow(earnData))
+
+{sink("NUL"); 
+  fit2 <- stan(model_code=stan2, data = earnModDat, iter = 5000, chains = 2)
+sink()}
+
+print(fit2)
+```
+
+### Playing with Priors
+
+```{r earningsPrior}
+stan2a <- 'data {
+  int<lower=0> N;
+  vector[N] earn;
+  vector[N] height;
+  real beta_1_prior;
+  real<lower=0> beta_1_prior_var;
+}
+transformed data {           
+  vector[N] log_earn;        
+  log_earn <- log(earn);
+}
+parameters {
+  vector[2] beta;
+  real<lower=0> sigma;
+}
+model {
+  beta[1] ~ normal(beta_1_prior, beta_1_prior_var);
+  log_earn ~ normal(beta[1] + beta[2] * height, sigma);
+}
+'
+
+fit2a <- stan(model_code=stan2a, 
+              data = c(earnModDat, list("beta_1_prior" = 2, 
+                                           "beta_1_prior_var" = 5)), 
+              iter = 5000, chains = 2)
+```
+
+
